@@ -18,9 +18,21 @@ int main() {
         std::getline(std::cin, next_line);
         std::cout << prompt << std::flush
     ) {
-        std::cout << next_line << std::endl;
+        for (size_t i = 0; i < next_line.length();) {
+            int code_point_len = 1;
+            if ((next_line[i] & 0xf8) == 0xf0)             code_point_len = 4;
+            else if ((next_line[i] & 0xf0) == 0xe0)        code_point_len = 3;
+            else if ((next_line[i] & 0xe0) == 0xc0)        code_point_len = 2;
+            if ((i + code_point_len) > next_line.length()) code_point_len = 1;
+
+            std::string utf8_char = next_line.substr(i, code_point_len);
+            std::cout << utf8_char << " [" << code_point_len << "]" << std::endl;
+
+            i += code_point_len;
+        }
     }
 
-    std::cout << "input closed, exiting..." << std::endl;
+    std::cout << "Exiting REPL..." << std::endl;
     return EXIT_SUCCESS;
 }
+
