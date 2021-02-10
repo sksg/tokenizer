@@ -2,24 +2,25 @@
 #include <string>
 
 int main() {
-    std::cout << "Welcome to the tokenizer. " << std::endl;
-    std::cout << "Input a line of code, and the tokenizer will return the tokens. " << std::endl;
-    std::cout << "Exit by closing input stream e.g. ctrl+d (unix) or ctrl+z (win)." << std::endl;
-    std::cout << std::endl;
+    auto short_welcome = "Welcome to the tokenizer.";
+    auto long_welcome = 
+        "Input a line of code, and the tokenizer will return the tokens. "
+        "Exit by closing input stream e.g. ctrl+d (unix) or ctrl+z (win).";
+    auto prompt = "tokenizer> ";
+    
+    std::cout << short_welcome << std::endl;
+    std::cout << long_welcome << std::endl;
+    std::cout << std::endl << prompt << std::flush;
 
-    while (true) { //REPL lopp
+    
+    for ( // Infinite REPL loop
         std::string next_line;
-
-        // Tokenizer prompt:
-        std::cout << "tokenizer> " << std::flush;
-
-        if (!std::getline(std::cin, next_line)) {
-            std::cout << "exiting..." << std::endl;
-            break;
-        }
-
-        
+        std::getline(std::cin, next_line);
+        std::cout << prompt << std::flush
+    ) {
         std::cout << next_line << std::endl;
     }
+
+    std::cout << "input closed, exiting..." << std::endl;
     return EXIT_SUCCESS;
 }
