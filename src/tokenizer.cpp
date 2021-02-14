@@ -2,6 +2,12 @@
 #include <string>
 #include <sstream>
 
+// Test strings:
+// a = 1
+// b=2
+// c =3
+// a+b * c
+
 int main() {
     auto short_welcome = "Welcome to the tokenizer.";
     auto long_welcome = 
@@ -27,18 +33,11 @@ int main() {
             switch (next_char) {
                 case ' ':
                 case '\t':
-                    if (identifier_start < position) {
-                        size_t length = position - identifier_start;
-                        std::cout << next_line.substr(identifier_start, length) << std::endl;
-                    }
-                    identifier_start = position + 1;
-                    continue;
+                    continue; // gooble, gooble
                 case '(':
                 case ')':
                 case '[':
                 case ']':
-                case '{':
-                case '}':
                 case '<':
                 case '>':
                 case '+':
@@ -49,22 +48,61 @@ int main() {
                 case '|':
                 case '!':
                 case '=':
-                case '#':
-                case '@':
                 case '"':
-                case '\'':
-                    if (identifier_start < position) {
-                        size_t length = position - identifier_start;
-                        std::cout << next_line.substr(identifier_start, length) << std::endl;
-                    }
-                    identifier_start = position + 1;
-                    std::cout << next_char << std::endl;
+                    std::cout << "OPR @ col:" << position + 1;
+                    std::cout << " :: '" << next_char << "'" << std::endl;
                     continue;
             }
-        }
-        if (identifier_start < position) {
-            size_t length = position - identifier_start;
-            std::cout << next_line.substr(identifier_start, length) << std::endl;
+
+            identifier_start = position;
+
+            if (next_char >= '0' && next_char <= '9') {
+                // Number literal
+                do {
+                    position++;
+                    next_char = next_line[position];
+                } while (next_char >= '0' && next_char <= '9');
+            }
+            if (next_char == '.') {
+                // Number literal, decimal/fractional part
+                do {
+                    position++;
+                    next_char = next_line[position];
+                } while (next_char >= '0' && next_char <= '9');
+            }
+            
+            if (identifier_start != position) {
+                auto length = position - identifier_start;
+                auto number = next_line.substr(identifier_start, length);
+                std::cout << "NUM @ col:" << identifier_start + 1 << ", len:" << length;
+                std::cout << " :: '" << number << "'" << std::endl;
+                position--;
+                continue;
+            }
+
+            if (
+                (next_char >= 'a' && next_char <= 'z') ||
+                (next_char >= 'A' && next_char <= 'Z')
+            ) {
+                // Number literal
+                do {
+                    position++;
+                    next_char = next_line[position];
+                } while (
+                    (next_char >= 'a' && next_char <= 'z') ||
+                    (next_char >= 'A' && next_char <= 'Z') ||
+                    (next_char >= '0' && next_char <= '9') ||
+                    (next_char == '_')
+                );
+            }
+            
+            if (identifier_start != position) {
+                auto length = position - identifier_start;
+                auto symbol = next_line.substr(identifier_start, length);
+                std::cout << "SYM @ col:" << identifier_start + 1 << ", len:" << length;
+                std::cout << " :: '" << symbol << "'" << std::endl;
+                position--;
+            }
         }
         std::cout << "EOL" << std::endl;
     }
