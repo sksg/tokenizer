@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <string_view>
 #include <cstdint>
 
 #include "unicode_tables.h"
@@ -11,25 +12,77 @@
 // c =3
 // a+b * c
 
-// multibyte test: 0b1xxxxxxx;
-const uint8_t UTF8_MULTIBYTE_MASK = 0x80;  // 0b10000000;
+template <int N>
+size_t read_in_unicode_table(
+    const std::string_view &line,
+    const uint32_t (&unicode_table)[N][2]
+) {
+    // multibyte test: 0b1xxxxxxx;
+    static const uint8_t UTF8_MULTIBYTE_MASK = 0x80;  // 0b10000000;
 
-// 4-byte test: 0b11110xxx;
-const uint8_t UTF8_4BYTE_MASK = 0xf8;  // 0b11111000;
-const uint8_t UTF8_4BYTE_MASK_INV = 0x07;  // 0b00000111;
-const uint8_t UTF8_4BYTE_TEST = 0xf0;  // 0b11110000;
+    // 4-byte test: 0b11110xxx;
+    static const uint8_t UTF8_4BYTE_MASK = 0xf8;  // 0b11111000;
+    static const uint8_t UTF8_4BYTE_MASK_INV = 0x07;  // 0b00000111;
+    static const uint8_t UTF8_4BYTE_TEST = 0xf0;  // 0b11110000;
 
-// 3-byte test: 0b1110xxxx;
-const uint8_t UTF8_3BYTE_MASK = 0xf0;  // 0b11110000;
-const uint8_t UTF8_3BYTE_MASK_INV = 0x0f;  // 0b00001111;
-const uint8_t UTF8_3BYTE_TEST = 0xe0;  // 0b11100000;
+    // 3-byte test: 0b1110xxxx;
+    static const uint8_t UTF8_3BYTE_MASK = 0xf0;  // 0b11110000;
+    static const uint8_t UTF8_3BYTE_MASK_INV = 0x0f;  // 0b00001111;
+    static const uint8_t UTF8_3BYTE_TEST = 0xe0;  // 0b11100000;
 
-// 2-byte test: 0b110xxxxx;
-const uint8_t UTF8_2BYTE_MASK = 0xe0;  // 0b11100000;
-const uint8_t UTF8_2BYTE_MASK_INV = 0x1f;  // 0b00001111;
-const uint8_t UTF8_2BYTE_TEST = 0xc0;  // 0b11000000;
+    // 2-byte test: 0b110xxxxx;
+    static const uint8_t UTF8_2BYTE_MASK = 0xe0;  // 0b11100000;
+    static const uint8_t UTF8_2BYTE_MASK_INV = 0x1f;  // 0b00001111;
+    static const uint8_t UTF8_2BYTE_TEST = 0xc0;  // 0b11000000;
 
-const uint8_t UTF8_NEXT_BYTE_MASK = 0x3f;  // 0b00111111;
+    static const uint8_t UTF8_NEXT_BYTE_MASK = 0x3f;  // 0b00111111;
+
+    if (!(line[0] & UTF8_MULTIBYTE_MASK))
+        return 0;
+
+    uint32_t code = 0;
+    size_t code_len = 0;
+    if ((line[0] & UTF8_4BYTE_MASK) == UTF8_4BYTE_TEST) {
+        if (4 > line.length()) {
+            std::cerr << "UTF8 string error (missing bytes)" << std::endl;
+        }
+        uint32_t b0 = (line[0] & UTF8_4BYTE_MASK_INV) << 18;
+        uint32_t b1 = (line[1] & UTF8_NEXT_BYTE_MASK) << 12;
+        uint32_t b2 = (line[2] & UTF8_NEXT_BYTE_MASK) << 6;
+        uint32_t b3 = (line[3] & UTF8_NEXT_BYTE_MASK) << 0;
+        code = b0 | b1 | b2 | b3;
+        code_len = 4;
+    }
+    else if ((line[0] & UTF8_3BYTE_MASK) == UTF8_3BYTE_TEST) {
+        if (3 > line.length()) {
+            std::cerr << "UTF8 string error (missing bytes)" << std::endl;
+        }
+        uint32_t b0 = (line[0] & UTF8_3BYTE_MASK_INV) << 12;
+        uint32_t b1 = (line[1] & UTF8_NEXT_BYTE_MASK) << 6;
+        uint32_t b2 = (line[2] & UTF8_NEXT_BYTE_MASK) << 0;
+        code = b0 | b1 | b2;
+        code_len = 3;
+    }
+    else if ((line[0] & UTF8_2BYTE_MASK) == UTF8_2BYTE_TEST) {
+        if (2 > line.length()) {
+            std::cerr << "UTF8 string error (missing bytes)" << std::endl;
+        }
+        uint32_t b0 = (line[0] & UTF8_2BYTE_MASK_INV) << 6;
+        uint32_t b1 = (line[1] & UTF8_NEXT_BYTE_MASK) << 0;
+        code = b0 | b1;
+        code_len = 2;
+    }
+    else {
+        std::cerr << "Unknown unicode character '" << line[0] << "'";
+        std::cerr << "(\\U" << (uint)(uint8_t)line[0] << ")" << std::endl;
+    }
+    
+    for (size_t i = 0; i < N; i++)
+        if (code >= unicode_table[i][0] && code <= unicode_table[i][1])
+            return code_len;
+
+    return 0;
+}
 
 int main() {
     auto short_welcome = "Welcome to the tokenizer.";
@@ -109,45 +162,17 @@ int main() {
             );
             if (is_id_start)
                 position++;
-            else if (current_char & UTF8_MULTIBYTE_MASK) {
-                uint32_t code = 0;
-                if ((current_char & UTF8_4BYTE_MASK) == UTF8_4BYTE_TEST) {
-                    if (position + 4 > next_line.length()) {
-                        std::cerr << "UTF8 string error (missing bytes)" << std::endl;
-                    }
-                    uint32_t b0 = (next_line[position + 0] & UTF8_4BYTE_MASK_INV) << 18;
-                    uint32_t b1 = (next_line[position + 1] & UTF8_NEXT_BYTE_MASK) << 12;
-                    uint32_t b2 = (next_line[position + 2] & UTF8_NEXT_BYTE_MASK) << 6;
-                    uint32_t b3 = (next_line[position + 3] & UTF8_NEXT_BYTE_MASK) << 0;
-                    code = b0 | b1 | b2 | b3;
-                    position += 4;
+            else {
+                auto remaining_line = std::string_view(next_line);
+                remaining_line.remove_prefix(position);
+                auto code_len = read_in_unicode_table(
+                    remaining_line,
+                    id_start_table
+                );
+                if (code_len > 0) {
+                    is_id_start = true;
+                    position += code_len;
                 }
-                else if ((current_char & UTF8_3BYTE_MASK) == UTF8_3BYTE_TEST) {
-                    if (position + 3 > next_line.length()) {
-                        std::cerr << "UTF8 string error (missing bytes)" << std::endl;
-                    }
-                    uint32_t b0 = (next_line[position + 0] & UTF8_3BYTE_MASK_INV) << 12;
-                    uint32_t b1 = (next_line[position + 1] & UTF8_NEXT_BYTE_MASK) << 6;
-                    uint32_t b2 = (next_line[position + 2] & UTF8_NEXT_BYTE_MASK) << 0;
-                    code = b0 | b1 | b2;
-                    position += 3;
-                }
-                else if ((current_char & UTF8_2BYTE_MASK) == UTF8_2BYTE_TEST) {
-                    if (position + 2 > next_line.length()) {
-                        std::cerr << "UTF8 string error (missing bytes)" << std::endl;
-                    }
-                    uint32_t b0 = (next_line[position + 0] & UTF8_2BYTE_MASK_INV) << 6;
-                    uint32_t b1 = (next_line[position + 1] & UTF8_NEXT_BYTE_MASK) << 0;
-                    code = b0 | b1;
-                    position += 2;
-                }
-                else {
-                    std::cerr << "Unknown unicode character '" << current_char << "'";
-                    std::cerr << "(\\U" << (uint)(uint8_t)current_char << ")" << std::endl;
-                }
-                
-                for (auto range : id_start_table)
-                    is_id_start |= code >= range[0] && code <= range[1];
             }
 
             if (is_id_start) {
@@ -155,55 +180,28 @@ int main() {
                 bool is_id_continue = true;
                 while (is_id_continue && position < next_line.length()) {
                     current_char = next_line[position];
-                    is_id_continue = (
+                    bool is_id_continue = (
                         (current_char >= 'a' && current_char <= 'z') ||
                         (current_char >= 'A' && current_char <= 'Z') ||
                         (current_char >= '0' && current_char <= '9') ||
                         (current_char == '_')
                     );
-                    if (is_id_continue)
+                    if (is_id_start)
                         position++;
-                    else if (current_char & UTF8_MULTIBYTE_MASK) {
-                        uint32_t code = 0;
-                        if ((current_char & UTF8_4BYTE_MASK) == UTF8_4BYTE_TEST) {
-                            if (position + 4 > next_line.length()) {
-                                std::cerr << "UTF8 string error (missing bytes)" << std::endl;
-                            }
-                            uint32_t b0 = (next_line[position + 0] & UTF8_4BYTE_MASK_INV) << 18;
-                            uint32_t b1 = (next_line[position + 1] & UTF8_NEXT_BYTE_MASK) << 12;
-                            uint32_t b2 = (next_line[position + 2] & UTF8_NEXT_BYTE_MASK) << 6;
-                            uint32_t b3 = (next_line[position + 3] & UTF8_NEXT_BYTE_MASK) << 0;
-                            code = b0 | b1 | b2 | b3;
-                            position += 4;
+                    else {
+                        auto remaining_line = std::string_view(next_line);
+                        remaining_line.remove_prefix(position);
+                        auto code_len = read_in_unicode_table(
+                            remaining_line,
+                            id_start_table
+                        );
+                        if (code_len > 0) {
+                            is_id_start = true;
+                            position += code_len;
                         }
-                        else if ((current_char & UTF8_3BYTE_MASK) == UTF8_3BYTE_TEST) {
-                            if (position + 3 > next_line.length()) {
-                                std::cerr << "UTF8 string error (missing bytes)" << std::endl;
-                            }
-                            uint32_t b0 = (next_line[position + 0] & UTF8_3BYTE_MASK_INV) << 12;
-                            uint32_t b1 = (next_line[position + 1] & UTF8_NEXT_BYTE_MASK) << 6;
-                            uint32_t b2 = (next_line[position + 2] & UTF8_NEXT_BYTE_MASK) << 0;
-                            code = b0 | b1 | b2;
-                            position += 3;
-                        }
-                        else if ((current_char & UTF8_2BYTE_MASK) == UTF8_2BYTE_TEST) {
-                            if (position + 2 > next_line.length()) {
-                                std::cerr << "UTF8 string error (missing bytes)" << std::endl;
-                            }
-                            uint32_t b0 = (next_line[position + 0] & UTF8_2BYTE_MASK_INV) << 6;
-                            uint32_t b1 = (next_line[position + 1] & UTF8_NEXT_BYTE_MASK) << 0;
-                            code = b0 | b1;
-                            position += 2;
-                        }
-                        else {
-                            std::cerr << "Unknown unicode character '" << current_char << "'";
-                            std::cerr << "(\\U" << (uint)(uint8_t)current_char << ")" << std::endl;
-                        }
-                        
-                        for (auto range : id_start_table)
-                            is_id_continue |= code >= range[0] && code <= range[1];
                     }
                 };
+                current_char = next_line[position];
             }
 
             if (id_start != position) { // Identifier has been parsed
