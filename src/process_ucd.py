@@ -52,13 +52,19 @@ destination += "#include <cstdint>\n\n"
 
 destination += "uint32_t id_start_table[][2] = {\n"
 for (c1, c2) in id_start:
-    destination += "    {}, {},\n".format(c1, c2)
+    destination += "    {}, {},  //".format(c1, c2)
+    for i in range(c1, c2 + 1):
+        destination += chr(i)
+    destination += "\n"
 destination += "};\n"
 destination += "size_t id_start_table_len = sizeof(id_start_table) / sizeof(id_start_table[0]);\n\n"
 
 destination += "uint32_t id_continue_table[][2] = {\n"
 for (c1, c2) in  id_continue:
-    destination += "    {}, {},\n".format(c1, c2)
+    destination += "    {}, {},  //".format(c1, c2)
+    for i in range(c1, c2 + 1):
+        destination += chr(i)
+    destination += "\n"
 destination += "};\n"
 destination += "size_t id_continue_table_len = sizeof(id_continue_table) / sizeof(id_continue_table[0]);\n\n"
 
