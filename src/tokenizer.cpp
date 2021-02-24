@@ -12,20 +12,70 @@
 // c =3
 // a+b * c
 
-struct stream {
+struct token {
+    enum {
+        punctuation_kind,
+        number_kind,
+        symbol_kind,
+        bad_char_kind
+    } kind;
+
+    const char* const position;
+    int length;
+    int column, column_length;
+};
+
+void print_token(const token &tkn) {
+    switch (tkn.kind)
+    {
+    case token::punctuation_kind:
+        std::cout << "PCT";
+        break;
+    case token::number_kind:
+        std::cout << "NUM";
+        break;
+    case token::symbol_kind:
+        std::cout << "SYM";
+        break;
+    case token::bad_char_kind:
+        std::cout << "BAD";
+        break;
+    }
+    std::cout << " @ col:" << tkn.column;
+    if (tkn.column_length > 1)
+        std::cout << ", len:" << tkn.column_length;
+    auto tkn_str = std::string_view(tkn.position, tkn.length);
+    std::cout << " :: '" << tkn_str << "'" << std::endl;
+}
+
+struct scanner {
     const char* const begin_position;
     const char* current_position;
     int current_char_length;
+    int current_column;
     const char* const end_position;
 
-    static stream from_string(const std::string str) {
-        return {str.data(), str.data(), 1, str.data() + str.length()};
+    static scanner from_string(const std::string str) {
+        return {str.data(), str.data(), 1, 1, str.data() + str.length()};
     }
 
-    bool not_at_end() { return current_position < end_position; }
-    char current_char(int offset = 0) { return current_position[offset]; }
-    void consume_current() { current_position += current_char_length; current_char_length = 1; }
-    int remaining_length() { return end_position - current_position; }
+    bool not_at_end() {
+        return current_position < end_position;
+    }
+    
+    char current_char(int offset = 0) {
+        return current_position[offset];
+    }
+    
+    void consume_current() {
+        current_position += current_char_length;
+        current_char_length = 1;
+        current_column++;
+    }
+
+    int remaining_length() {
+        return end_position - current_position;
+    }
     
     bool consume_numeric() {
         if (current_char() >= '0' && current_char() <= '9') {
@@ -49,7 +99,7 @@ struct stream {
 };
 
 template <int N>
-bool consume_good_utf8(stream &str, const uint32_t (&unicode_table)[N][2]) {
+bool consume_good_utf8(scanner &scr, const uint32_t (&unicode_table)[N][2]) {
     // multibyte test: 0b1xxxxxxx;
     static const uint8_t UTF8_MULTIBYTE_MASK = 0x80;  // 0b10000000;
 
@@ -70,47 +120,47 @@ bool consume_good_utf8(stream &str, const uint32_t (&unicode_table)[N][2]) {
 
     static const uint8_t UTF8_NEXT_BYTE_MASK = 0x3f;  // 0b00111111;
 
-    if (!(str.current_char() & UTF8_MULTIBYTE_MASK))
+    if (!(scr.current_char() & UTF8_MULTIBYTE_MASK))
         return false;
 
     uint32_t code = 0;
-    if ((str.current_char() & UTF8_4BYTE_MASK) == UTF8_4BYTE_TEST) {
-        if (str.remaining_length() < 4 ) {
+    if ((scr.current_char() & UTF8_4BYTE_MASK) == UTF8_4BYTE_TEST) {
+        if (scr.remaining_length() < 4 ) {
             std::cerr << "UTF8 string error (missing bytes)" << std::endl;
         }
-        uint32_t b0 = (str.current_char(0) & UTF8_4BYTE_MASK_INV) << 18;
-        uint32_t b1 = (str.current_char(1) & UTF8_NEXT_BYTE_MASK) << 12;
-        uint32_t b2 = (str.current_char(2) & UTF8_NEXT_BYTE_MASK) << 6;
-        uint32_t b3 = (str.current_char(3) & UTF8_NEXT_BYTE_MASK) << 0;
+        uint32_t b0 = (scr.current_char(0) & UTF8_4BYTE_MASK_INV) << 18;
+        uint32_t b1 = (scr.current_char(1) & UTF8_NEXT_BYTE_MASK) << 12;
+        uint32_t b2 = (scr.current_char(2) & UTF8_NEXT_BYTE_MASK) << 6;
+        uint32_t b3 = (scr.current_char(3) & UTF8_NEXT_BYTE_MASK) << 0;
         code = b0 | b1 | b2 | b3;
-        str.current_char_length = 4;
+        scr.current_char_length = 4;
     }
-    else if ((str.current_char() & UTF8_3BYTE_MASK) == UTF8_3BYTE_TEST) {
-        if (str.remaining_length() < 3 ) {
+    else if ((scr.current_char() & UTF8_3BYTE_MASK) == UTF8_3BYTE_TEST) {
+        if (scr.remaining_length() < 3 ) {
             std::cerr << "UTF8 string error (missing bytes)" << std::endl;
         }
-        uint32_t b0 = (str.current_char(0) & UTF8_3BYTE_MASK_INV) << 12;
-        uint32_t b1 = (str.current_char(1) & UTF8_NEXT_BYTE_MASK) << 6;
-        uint32_t b2 = (str.current_char(2) & UTF8_NEXT_BYTE_MASK) << 0;
+        uint32_t b0 = (scr.current_char(0) & UTF8_3BYTE_MASK_INV) << 12;
+        uint32_t b1 = (scr.current_char(1) & UTF8_NEXT_BYTE_MASK) << 6;
+        uint32_t b2 = (scr.current_char(2) & UTF8_NEXT_BYTE_MASK) << 0;
         code = b0 | b1 | b2;
-        str.current_char_length = 3;
+        scr.current_char_length = 3;
     }
-    else if ((str.current_char() & UTF8_2BYTE_MASK) == UTF8_2BYTE_TEST) {
-        if (str.remaining_length() < 2 ) {
+    else if ((scr.current_char() & UTF8_2BYTE_MASK) == UTF8_2BYTE_TEST) {
+        if (scr.remaining_length() < 2 ) {
             std::cerr << "UTF8 string error (missing bytes)" << std::endl;
         }
-        uint32_t b0 = (str.current_char(0) & UTF8_2BYTE_MASK_INV) << 6;
-        uint32_t b1 = (str.current_char(1) & UTF8_NEXT_BYTE_MASK) << 0;
+        uint32_t b0 = (scr.current_char(0) & UTF8_2BYTE_MASK_INV) << 6;
+        uint32_t b1 = (scr.current_char(1) & UTF8_NEXT_BYTE_MASK) << 0;
         code = b0 | b1;
-        str.current_char_length = 2;
+        scr.current_char_length = 2;
     }
     else {
-        std::cerr << "ERROR: Bad UTF8 code point '" << str.current_char() << "'" << std::endl;
+        std::cerr << "ERROR: Bad UTF8 code point '" << scr.current_char() << "'" << std::endl;
     }
     
     for (size_t i = 0; i < N; i++) {
         if (code >= unicode_table[i][0] && code <= unicode_table[i][1]) {
-            str.consume_current();
+            scr.consume_current();
             return true;
         }
     }
@@ -129,20 +179,25 @@ int main() {
     std::cout << long_welcome << std::endl;
     std::cout << std::endl << prompt << std::flush;
 
-    
     for ( // Infinite REPL loop
         std::string line;
         std::getline(std::cin, line);
         std::cout << prompt << std::flush
     ) {
-        auto str = stream::from_string(line);
-        while (str.not_at_end()) {
+        auto scr = scanner::from_string(line);
+        while (scr.not_at_end()) {
+
+            token current_token = {
+                token::bad_char_kind,
+                scr.current_position, 1,
+                scr.current_column, 1
+            };
     
             // Single (byte) punctuation characters
-            switch (str.current_char()) {
+            switch (scr.current_char()) {
                 case ' ':
                 case '\t':
-                    str.consume_current();
+                    scr.consume_current();
                     continue;
                 case '(':
                 case ')':
@@ -151,44 +206,51 @@ int main() {
                 case '*':
                 case '/':
                 case '=':
-                    std::cout << "PCT @ col:" << int(str.current_position - str.begin_position) + 1;
-                    std::cout << " :: '" << str.current_char() << "'" << std::endl;
-                    str.consume_current();
+                    current_token.kind = token::punctuation_kind;
+                    print_token(current_token);
+                    scr.consume_current();
                     continue;
             }
 
             // Number literal
-            auto id_start = str.current_position;
-            while (str.consume_numeric());
+            while (scr.consume_numeric());
             // Number literal, decimal/fractional part
-            if (str.current_char() == '.') {
-                str.consume_current();
-                while (str.consume_numeric());
+            if (scr.current_char() == '.') {
+                scr.consume_current();
+                while (scr.consume_numeric());
             }
             
-            if (id_start != str.current_position) { // Number literal has been parsed
-                int length = str.current_position - id_start;
-                auto number = std::string_view(id_start, length);
-                std::cout << "NUM @ col:" << int(id_start - str.begin_position) + 1 << ", len:" << length;
-                std::cout << " :: '" << number << "'" << std::endl;
+            if (current_token.position != scr.current_position) {
+                // Number literal has been parsed
+                current_token.kind = token::number_kind;
+                current_token.length = scr.current_position - current_token.position;
+                current_token.column_length = scr.current_column - current_token.column;
+                print_token(current_token);
                 continue;
             }
 
             // identifier
-            str.current_char_length = 1;
-            if (str.consume_alpha() || consume_good_utf8(str, id_start_table))
-                while (str.consume_alpha() || consume_good_utf8(str, id_continue_table));
+            scr.current_char_length = 1;
+            if (scr.consume_alpha() || consume_good_utf8(scr, id_start_table))
+                while (
+                    scr.consume_alpha() ||
+                    scr.consume_numeric() ||
+                    consume_good_utf8(scr, id_continue_table)
+                );
 
-            if (id_start != str.current_position) { // Identifier has been parsed
-                int length = str.current_position - id_start;
-                auto number = std::string_view(id_start, length);
-                std::cout << "SYM @ col:" << int(id_start - str.begin_position) + 1 << ", len:" << length;
-                std::cout << " :: '" << number << "'" << std::endl;
+            if (current_token.position != scr.current_position) {
+                // Identifier has been parsed
+                current_token.kind = token::symbol_kind;
+                current_token.length = scr.current_position - current_token.position;
+                current_token.column_length = scr.current_column - current_token.column;
+                print_token(current_token);
                 continue;
             }
 
-            std::cerr << "Unknown character '" << std::string_view(str.current_position, str.current_char_length) << "'" << std::endl;
-            str.consume_current();
+            current_token.kind = token::bad_char_kind;
+            current_token.length = scr.current_char_length;
+            print_token(current_token);
+            scr.consume_current();
         };
 
         std::cout << "EOL" << std::endl;
