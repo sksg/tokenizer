@@ -16,11 +16,11 @@ struct token {
     } kind = bad_char_kind;
 
     const char* position = nullptr;
-    uint length = 0;
+    size_t length = 0;
 
     // Optimization(sorgre): Column data can be determined when printing.
-    uint column = 0;
-    uint column_length = 0;
+    size_t column = 0;
+    size_t column_length = 0;
 
     std::string_view string_view() const {
         return std::string_view(position, length);
@@ -51,9 +51,9 @@ std::ostream& operator << (std::ostream& str, const token &tkn) {
 struct tokenizer {
     const char* position = nullptr;
     const char* const end = nullptr;
-    uint current_char_length = 0;
+    size_t current_char_length = 0;
 
-    uint column = 0; // Optimization(sorgre): Only needed for setting column data inside tokens.
+    size_t column = 0; // Optimization(sorgre): Only needed for setting column data inside tokens.
 
     static tokenizer from_string(const std::string &str) {
         return {str.data(), str.data() + str.length(), 1, 1};
